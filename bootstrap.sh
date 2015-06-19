@@ -1,0 +1,228 @@
+#!/usr/bin/env bash
+
+
+# -----------------------------------------------------------
+#  CONFIGURATION
+# -----------------------------------------------------------
+#
+# The SITE configuration variable is used for naming your
+# website folder, database, and database username.  It
+# should only contain alphanumeric characters.  It should
+# not contain spaces.
+#
+# Good example values for SITE:
+#
+#   postalmonkey
+#   instacash
+#   phustr
+#   pigglybonk
+#
+# The GITHUB_OAUTH_TOKEN is unfortunately necessary for
+# some PHP composer library installations that pull form
+# GitHub.  In order to generate this token, you'll need a
+# GitHub account.  The easiest way to generate a token
+# is by logging into GitHub, then navigating to 
+# https://github.com/settings/tokens
+#
+# This script was created for my own use to automate the
+# provisioning of a local Vagrant development environment
+# for website development using the Laravel October CMS.
+#
+
+SITE="yoursitename"
+GITHUB_OAUTH_TOKEN=""
+
+SITE_DB="${SITE}_db"
+SITE_DB_USER_NAME="${SITE}_usr"
+SITE_DB_USER_PASSWORD=$(cat /dev/urandom | tr -dc "a-zA-Z0-9!@#$%^&*()_+?><~;" | fold -w 16 | head -n 1)
+MYSQL_ROOT_PASSWORD=$(cat /dev/urandom | tr -dc "a-zA-Z0-9!@#$%^&*()_+?><~;" | fold -w 16 | head -n 1)
+
+# -----------------------------------------------------------
+#  /END OF CONFIGURATION
+
+
+
+# SETUP
+#-----------------------------------------------------------
+
+apt-get update
+apt-get install -y vim
+
+
+# APACHE
+# -------------------------------------------------------------------
+
+apt-get install -y apache2
+
+# Remove /var/www default
+rm -rf /var/www
+
+# create the document root folder
+mkdir -p /var/www/$SITE/public
+
+# Symlink /vagrant to /var/www
+ln -fs /vagrant /var/www
+
+# Add ServerName to httpd.conf
+echo "ServerName localhost" > /etc/apache2/httpd.conf
+
+# Setup hosts file
+VHOST=$(cat <<EOF
+
+<VirtualHost *:80>
+    ServerAdmin webmaster@localhost
+    DocumentRoot "/var/www/$SITE/public"
+    ServerName localhost
+    ErrorLog "/var/log/apache2/${SITE}-error_log.log"
+    CustomLog "/var/log/apache2/${SITE}-access_log.log" common
+    <Directory "/var/www/${SITE}/public">
+        Options -Indexes +FollowSymLinks +MultiViews
+        Require all granted
+        AllowOverride All
+    </Directory>
+</VirtualHost>
+
+EOF
+)
+
+echo "${VHOST}" > /etc/apache2/sites-available/${SITE}.conf
+
+# create simlink
+ln -s /etc/apache2/sites-available/${SITE}.conf /etc/apache2/sites-enabled/${SITE}.conf
+
+# Enable mod_rewrite
+a2enmod rewrite
+
+# Restart apache
+service apache2 restart
+
+
+# PHP 5.4
+# -------------------------------------------------------------------
+
+# Install PHP5
+apt-get install -y libapache2-mod-php5
+
+# Add add-apt-repository binary
+apt-get install -y python-software-properties
+
+# Install PHP 5.4
+add-apt-repository ppa:ondrej/php5
+
+# Update
+apt-get update
+
+
+# PHP LIBRARIES
+# -------------------------------------------------------------------
+
+# Command-Line Interpreter
+apt-get install -y php5-cli
+
+# MySQL database connections directly from PHP
+apt-get install -y php5-mysql
+
+# cURL is a library for getting files from FTP, GOPHER, HTTP server
+apt-get install -y php5-curl
+
+# Module for MCrypt functions in PHP
+apt-get install -y php5-mcrypt
+
+# PHP 5 Mcrypt
+apt-get install -y php5-mcrypt
+
+# PHP 5 GD
+sudo apt-get install -y php5-gd
+
+# Set PHP timezone
+sudo sed -i "s/\;date\.timezone =/date\.timezone = \"America\/Los_Angeles\"/" /etc/php.ini
+
+# cURL
+# -------------------------------------------------------------------
+apt-get install -y curl
+
+
+# MySQL
+# -------------------------------------------------------------------
+
+# Ignore the post install questions
+export DEBIAN_FRONTEND=noninteractive
+
+# Install MySQL quietly
+apt-get -q -y install mysql-server-5.5
+
+# Take the same steps that mysql_secure_installation would normally do
+mysqladmin -u root password "$MYSQL_ROOT_PASSWORD"
+mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "UPDATE mysql.user SET Password=PASSWORD('$MYSQL_ROOT_PASSWORD') WHERE User='root'"
+mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1')"
+mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "DELETE FROM mysql.user WHERE User=''"
+mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "DELETE FROM mysql.db WHERE Db='test' OR Db='test\_%'"
+
+# Set up the database
+mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "CREATE DATABASE IF NOT EXISTS ${SITE_DB}"
+mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "CREATE USER '${SITE_DB_USER_NAME}'@'localhost' IDENTIFIED BY '${SITE_DB_USER_PASSWORD}'"
+mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "GRANT ALL PRIVILEGES ON ${SITE_DB}.* TO '${SITE_DB_USER_NAME}'@'%' IDENTIFIED BY '${SITE_DB_USER_PASSWORD}' WITH GRANT OPTION"
+mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "FLUSH PRIVILEGES"
+
+
+# Git
+# -------------------------------------------------------------------
+apt-get install -y git-core
+
+
+# Install Composer
+# -------------------------------------------------------------------
+sudo curl -s https://getcomposer.org/installer | php
+sudo mv composer.phar /usr/local/bin/composer
+sudo echo "export PATH=$PATH:/usr/local/bin" >> ~/.profile
+export PATH=$PATH:/usr/local/bin
+
+# Tell composer about our GitHub oauth token
+composer config -g github-oauth.github.com ${GITHUB_OAUTH_TOKEN}
+
+
+# Install October
+# -------------------------------------------------------------------
+composer create-project october/october /var/www/${SITE}/public dev-master --no-interaction --quiet
+
+
+# Configure October (Laravel) database settings
+# credit to: https://github.com/natanshalva/Laravel-install/blob/master/install_laravel4.sh
+# -------------------------------------------------------------------
+
+mv /var/www/${SITE}/public/config/database.php /var/www/${SITE}/public/config/database.php.orig
+
+sed "s/'database'  => 'database'/'database'  => '${SITE_DB}'/g  
+     s/'username'  => 'root'/'username'  => '${SITE_DB_USER_NAME}'/g  
+     s/'password'  => ''/'password'  => '${SITE_DB_USER_PASSWORD}'/g"  /var/www/${SITE}/public/config/database.php.orig > /var/www/${SITE}/public/config/database.php
+
+php /var/www/${SITE}/public/artisan october:up
+
+
+# Last minute updates 
+# Why do these need to be down here?  I'm not sure, but they do.
+# -------------------------------------------------------------------
+
+# Remove default apache config files
+sudo rm -fv /etc/apache2/sites-enabled/000-default.conf
+sudo rm -fv /etc/apache2/sites-available/000-default.conf
+
+# Restart apache
+sudo service apache2 restart
+
+# Set the storage folder's permissions
+chmod -R ugo+wrx /var/www/${SITE}/public/storage
+
+echo ""
+echo "Done."
+echo ""
+echo "=================================================="
+echo "  ${SITE} configuration                           "
+echo "=================================================="
+echo "SITE: ${SITE}                                     "
+echo "MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}       "
+echo "SITE_DB: ${SITE_DB}                               "
+echo "SITE_DB_USER_NAME: ${SITE_DB_USER_NAME}           "
+echo "SITE_DB_USER_PASSWORD: ${SITE_DB_USER_PASSWORD}   "
+echo "=================================================="
+echo ""
