@@ -29,8 +29,8 @@
 # for website development using the Laravel October CMS.
 #
 
-SITE="yoursitename"
-GITHUB_OAUTH_TOKEN=""
+SITE="$site"
+GITHUB_OAUTH_TOKEN="$github_token"
 
 SITE_DB="${SITE}_db"
 SITE_DB_USER_NAME="${SITE}_usr"
@@ -213,6 +213,69 @@ sudo service apache2 restart
 # Set the storage folder's permissions
 chmod -R ugo+wrx /var/www/${SITE}/public/storage
 
+cd /var/www/${SITE}/public
+
+# Install node.js and grunt
+curl -sL https://deb.nodesource.com/setup | sudo bash -
+sudo apt-get install -y nodejs
+sudo npm install grunt-cli --no-bin-links
+sudo npm install -g grunt-cli
+sudo npm install grunt --no-bin-links
+sudo npm install grunt-contrib-less --no-bin-links
+sudo npm install grunt-contrib-watch --no-bin-links
+
+# Setup hosts file
+GRUNTFILE=$(cat <<EOF
+
+module.exports = function (grunt) {
+  grunt.initConfig({
+    less: {
+      development: {
+         options: {
+           compress: true,
+           yuicompress: true,
+           optimization: 2,
+           sourceMap: true,
+           sourceMapFilename: 'themes/[REPLACE-WITH-THEME-NAME]/assets/css/theme.css.map', // where file is generated and located
+           sourceMapURL: '/themes/[REPLACE-WITH-THEME-NAME]/assets/css/styles.css.map', // the complete url and filename put in the compiled css file
+           sourceMapBasepath: 'public', // Sets sourcemap base path, defaults to current working directory.
+           sourceMapRootpath: '/', // adds this path onto the sourcemap filename and less file paths
+         },
+         files: {
+           // target.css file: source.less file
+           "themes/[REPLACE-WITH-THEME-NAME]/assets/css/theme.css": "themes/[REPLACE-WITH-THEME-NAME]/assets/less/theme.less"
+         }
+       }
+     },
+     watch: {
+       styles: {
+         files: ['themes/[REPLACE-WITH-THEME-NAME]/assets/less/**/*.less'], // which files to watch
+         tasks: ['less'],
+         options: {
+           nospawn: true
+         }
+       }
+     }
+   });
+
+   grunt.loadNpmTasks('grunt-contrib-less');
+   grunt.loadNpmTasks('grunt-contrib-watch');
+
+   grunt.registerTask('default', ['watch']);
+};
+
+EOF
+)
+
+echo "${GRUNTFILE}" > /var/www/${SITE}/public/Gruntfile.js
+
+BASH_PROFILE=$(cat <<EOF
+  PATH=$PATH:~/usr/local/share/npm/bin
+EOF
+)
+
+echo "$BASH_PROFILE" > ~/.bash_profile
+
 echo ""
 echo "Done."
 echo ""
@@ -226,3 +289,17 @@ echo "SITE_DB_USER_NAME: ${SITE_DB_USER_NAME}           "
 echo "SITE_DB_USER_PASSWORD: ${SITE_DB_USER_PASSWORD}   "
 echo "=================================================="
 echo ""
+
+
+# TODO
+# Log in to your box with ssh vagrant@127.0.0.1 -p 2222 (password vagrant)
+#
+# Then: sudo nano /etc/mysql/my.cnf and comment out the following lines with #
+#
+#skip-external-locking 
+#bind-address
+#
+#save it & exit
+#
+#then: sudo service mysql restart
+# http://stackoverflow.com/questions/10709334/how-to-connect-to-mysql-server-inside-virtualbox-vagrant
