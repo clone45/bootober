@@ -34,8 +34,8 @@ GITHUB_OAUTH_TOKEN="$github_token"
 
 SITE_DB="${SITE}_db"
 SITE_DB_USER_NAME="${SITE}_usr"
-SITE_DB_USER_PASSWORD=$(cat /dev/urandom | tr -dc "a-zA-Z0-9!@#$%^&*()_+?><~;" | fold -w 16 | head -n 1)
-MYSQL_ROOT_PASSWORD=$(cat /dev/urandom | tr -dc "a-zA-Z0-9!@#$%^&*()_+?><~;" | fold -w 16 | head -n 1)
+SITE_DB_USER_PASSWORD=$(cat /dev/urandom | tr -dc "a-zA-Z0-9_+" | fold -w 16 | head -n 1)
+MYSQL_ROOT_PASSWORD=$(cat /dev/urandom | tr -dc "a-zA-Z0-9_+" | fold -w 16 | head -n 1)
 
 # -----------------------------------------------------------
 #  /END OF CONFIGURATION
@@ -164,6 +164,12 @@ mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "CREATE USER '${SITE_DB_USER_NAME}'@'l
 mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "GRANT ALL PRIVILEGES ON ${SITE_DB}.* TO '${SITE_DB_USER_NAME}'@'%' IDENTIFIED BY '${SITE_DB_USER_PASSWORD}' WITH GRANT OPTION"
 mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "FLUSH PRIVILEGES"
 
+# Update the bind-address so that we can connect using Heidi
+sudo sed -i "s/bind-address.*/bind-address = $bind_address/" /etc/mysql/my.cnf
+
+# Restart
+sudo service mysql restart
+
 
 # Git
 # -------------------------------------------------------------------
@@ -283,23 +289,10 @@ echo "=================================================="
 echo "  ${SITE} configuration                           "
 echo "=================================================="
 echo "SITE: ${SITE}                                     "
+echo "IP Address: $bind_address                         "
 echo "MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}       "
 echo "SITE_DB: ${SITE_DB}                               "
 echo "SITE_DB_USER_NAME: ${SITE_DB_USER_NAME}           "
 echo "SITE_DB_USER_PASSWORD: ${SITE_DB_USER_PASSWORD}   "
 echo "=================================================="
 echo ""
-
-
-# TODO
-# Log in to your box with ssh vagrant@127.0.0.1 -p 2222 (password vagrant)
-#
-# Then: sudo nano /etc/mysql/my.cnf and comment out the following lines with #
-#
-#skip-external-locking 
-#bind-address
-#
-#save it & exit
-#
-#then: sudo service mysql restart
-# http://stackoverflow.com/questions/10709334/how-to-connect-to-mysql-server-inside-virtualbox-vagrant
