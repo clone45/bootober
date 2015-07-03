@@ -1,36 +1,12 @@
 #!/usr/bin/env bash
 
-
-# -----------------------------------------------------------
-#  CONFIGURATION
-# -----------------------------------------------------------
-#
-# The SITE configuration variable is used for naming your
-# website folder, database, and database username.  It
-# should only contain alphanumeric characters.  It should
-# not contain spaces.
-#
-# Good example values for SITE:
-#
-#   postalmonkey
-#   instacash
-#   phustr
-#   pigglybonk
-#
-# The GITHUB_OAUTH_TOKEN is unfortunately necessary for
-# some PHP composer library installations that pull form
-# GitHub.  In order to generate this token, you'll need a
-# GitHub account.  The easiest way to generate a token
-# is by logging into GitHub, then navigating to 
-# https://github.com/settings/tokens
-#
-# This script was created for my own use to automate the
-# provisioning of a local Vagrant development environment
-# for website development using the Laravel October CMS.
-#
+# CONFIGURATION (see config.sh)
+#-----------------------------------------------------------
 
 SITE="$site"
 GITHUB_OAUTH_TOKEN="$github_token"
+BITBUCKET_LOGIN="$bitbucket_login"
+BITBUCKET_PASSWORD="$bitbucket_password"
 
 SITE_DB="${SITE}_db"
 SITE_DB_USER_NAME="${SITE}_usr"
@@ -39,7 +15,6 @@ MYSQL_ROOT_PASSWORD=$(cat /dev/urandom | tr -dc "a-zA-Z0-9_+" | fold -w 16 | hea
 
 # -----------------------------------------------------------
 #  /END OF CONFIGURATION
-
 
 
 # SETUP
@@ -189,6 +164,7 @@ composer config -g github-oauth.github.com ${GITHUB_OAUTH_TOKEN}
 
 # Install October
 # -------------------------------------------------------------------
+echo "Installing OctoberCMS.  This might take a while..."
 composer create-project october/october /var/www/${SITE}/public dev-master --no-interaction --quiet
 
 
@@ -222,6 +198,7 @@ chmod -R ugo+wrx /var/www/${SITE}/public/storage
 cd /var/www/${SITE}/public
 
 # Install node.js and grunt
+# -------------------------------------------------------------------
 curl -sL https://deb.nodesource.com/setup | sudo bash -
 sudo apt-get install -y nodejs
 sudo npm install grunt-cli --no-bin-links
@@ -230,7 +207,6 @@ sudo npm install grunt --no-bin-links
 sudo npm install grunt-contrib-less --no-bin-links
 sudo npm install grunt-contrib-watch --no-bin-links
 
-# Setup hosts file
 GRUNTFILE=$(cat <<EOF
 
 module.exports = function (grunt) {
@@ -242,20 +218,20 @@ module.exports = function (grunt) {
            yuicompress: true,
            optimization: 2,
            sourceMap: true,
-           sourceMapFilename: 'themes/[REPLACE-WITH-THEME-NAME]/assets/css/theme.css.map', // where file is generated and located
-           sourceMapURL: '/themes/[REPLACE-WITH-THEME-NAME]/assets/css/styles.css.map', // the complete url and filename put in the compiled css file
+           sourceMapFilename: 'themes/${SITE}/assets/css/theme.css.map', // where file is generated and located
+           sourceMapURL: '/themes/${SITE}/assets/css/styles.css.map', // the complete url and filename put in the compiled css file
            sourceMapBasepath: 'public', // Sets sourcemap base path, defaults to current working directory.
            sourceMapRootpath: '/', // adds this path onto the sourcemap filename and less file paths
          },
          files: {
            // target.css file: source.less file
-           "themes/[REPLACE-WITH-THEME-NAME]/assets/css/theme.css": "themes/[REPLACE-WITH-THEME-NAME]/assets/less/theme.less"
+           "themes/${SITE}/assets/css/theme.css": "themes/${SITE}/assets/less/theme.less"
          }
        }
      },
      watch: {
        styles: {
-         files: ['themes/[REPLACE-WITH-THEME-NAME]/assets/less/**/*.less'], // which files to watch
+         files: ['themes/${SITE}/assets/less/**/*.less'], // which files to watch
          tasks: ['less'],
          options: {
            nospawn: true
@@ -275,6 +251,7 @@ EOF
 
 echo "${GRUNTFILE}" > /var/www/${SITE}/public/Gruntfile.js
 
+# Add grunt to the path
 BASH_PROFILE=$(cat <<EOF
   PATH=$PATH:~/usr/local/share/npm/bin
 EOF
@@ -282,6 +259,25 @@ EOF
 
 echo "$BASH_PROFILE" > ~/.bash_profile
 
+
+# Install the "blank" theme
+# -------------------------------------------------------------------
+
+cd /var/www/${SITE}/public
+/usr/bin/php artisan theme:install krisawzm.blank ${SITE} -n
+/usr/bin/php artisan theme:use ${SITE} --no-interaction --force
+
+# Copy over the less and vendor files from the demo theme
+# -------------------------------------------------------------------
+
+cp -R /var/www/${SITE}/public/themes/demo/assets/less /var/www/${SITE}/public/themes/${SITE}/assets
+cp -R /var/www/${SITE}/public/themes/demo/assets/vendor /var/www/${SITE}/public/themes/${SITE}/assets
+
+#
+# TODO: create a new theme that has a layout and the basic bootstrap scaffolding prepared
+
+echo ""
+echo ""
 echo ""
 echo "Done."
 echo ""
@@ -296,3 +292,7 @@ echo "SITE_DB_USER_NAME: ${SITE_DB_USER_NAME}           "
 echo "SITE_DB_USER_PASSWORD: ${SITE_DB_USER_PASSWORD}   "
 echo "=================================================="
 echo ""
+echo "To create a repository, use: "
+echo "curl --user ${BITBUCKET_LOGIN}:${BITBUCKET_PASSWORD} https://api.bitbucket.org/1.0/repositories/ --data name=${SITE}"
+echo ""
+echo "Run grunt to monitor and compile less files."
