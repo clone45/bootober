@@ -9,4 +9,4 @@ I created this for my own use.
 5. Right click on the project folder and select Git Bash
 6. Type: ./provision.sh [your-project-name]
 
-Point your browser to 192.168.50.7.  You should see an empty October theme.  Project names must only contain characters.
+Point your browser to 192.168.50.7.  You should see an empty October theme.  Project names must only contain a-zA-Z.
