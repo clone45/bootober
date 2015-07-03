@@ -1,5 +1,5 @@
 # bootober
-Windows scripts for setting up a OctoberCMS development environment using Vagrant.
+Scripts for setting up a OctoberCMS development environment in Windows using Vagrant.
 I created this for my own use.
 
 1. Install Vagrant
