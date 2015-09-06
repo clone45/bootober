@@ -17,29 +17,44 @@ MYSQL_ROOT_PASSWORD=$(cat /dev/urandom | tr -dc "a-zA-Z0-9_+" | fold -w 16 | hea
 #  /END OF CONFIGURATION
 
 
-# SETUP
-#-----------------------------------------------------------
-
-apt-get update
 apt-get install -y vim
 
 
-# APACHE
-# -------------------------------------------------------------------
+# From Chris Fidao's script to install Apache and PHP.
+# See: https://gist.github.com/fideloper/7074502
+# =============================================================
 
-apt-get install -y apache2
+# Update
+sudo apt-get update
 
-# Remove /var/www default
-rm -rf /var/www
+# Install MySQL without prompt
+sudo debconf-set-selections <<< "mysql-server mysql-server/root_password password $MYSQL_ROOT_PASSWORD"
+sudo debconf-set-selections <<< "mysql-server mysql-server/root_password_again password $MYSQL_ROOT_PASSWORD"
 
-# create the document root folder
-mkdir -p /var/www/$SITE/public
+echo ">>> Installing Base Items"
 
-# Symlink /vagrant to /var/www
-ln -fs /vagrant /var/www
+# Install base items
+sudo apt-get install -y vim tmux curl wget build-essential python-software-properties
+
+echo ">>> Adding PPA's and Installing Server Items"
+
+# Add repo for latest PHP
+sudo add-apt-repository -y ppa:ondrej/php5
+
+# Update Again
+sudo apt-get update
+
+# Install the Rest
+sudo apt-get install -y git-core php5 apache2 libapache2-mod-php5 php5-mysql php5-curl php5-gd php5-mcrypt php5-xdebug mysql-server
+
+# =============================================================
+
+# Stop apache
+service apache2 stop
 
 # Add ServerName to httpd.conf
-echo "ServerName localhost" > /etc/apache2/httpd.conf
+echo "ServerName localhost" | sudo tee /etc/apache2/conf-available/servername.conf
+sudo a2enconf servername
 
 # Setup hosts file
 VHOST=$(cat <<EOF
@@ -68,87 +83,21 @@ ln -s /etc/apache2/sites-available/${SITE}.conf /etc/apache2/sites-enabled/${SIT
 # Enable mod_rewrite
 a2enmod rewrite
 
+# Remove default sites_enabled
+rm /etc/apache2/sites-enabled/000-default.conf
+
+# Remove /var/www default
+# rm -rf /var/www
+
+# create the document root folder
+mkdir -p /var/www/$SITE/public
+
+# Symlink /vagrant to /var/www
+ln -fs /vagrant /var/www
+
 # Restart apache
 service apache2 restart
 
-
-# PHP 5.4
-# -------------------------------------------------------------------
-
-# Install PHP5
-apt-get install -y libapache2-mod-php5
-
-# Add add-apt-repository binary
-apt-get install -y python-software-properties
-
-# Install PHP 5.4
-add-apt-repository ppa:ondrej/php5
-
-# Update
-apt-get update
-
-
-# PHP LIBRARIES
-# -------------------------------------------------------------------
-
-# Command-Line Interpreter
-apt-get install -y php5-cli
-
-# MySQL database connections directly from PHP
-apt-get install -y php5-mysql
-
-# cURL is a library for getting files from FTP, GOPHER, HTTP server
-apt-get install -y php5-curl
-
-# Module for MCrypt functions in PHP
-apt-get install -y php5-mcrypt
-
-# PHP 5 Mcrypt
-apt-get install -y php5-mcrypt
-
-# PHP 5 GD
-sudo apt-get install -y php5-gd
-
-# Set PHP timezone
-sudo sed -i "s/\;date\.timezone =/date\.timezone = \"America\/Los_Angeles\"/" /etc/php.ini
-
-# cURL
-# -------------------------------------------------------------------
-apt-get install -y curl
-
-
-# MySQL
-# -------------------------------------------------------------------
-
-# Ignore the post install questions
-export DEBIAN_FRONTEND=noninteractive
-
-# Install MySQL quietly
-apt-get -q -y install mysql-server-5.5
-
-# Take the same steps that mysql_secure_installation would normally do
-mysqladmin -u root password "$MYSQL_ROOT_PASSWORD"
-mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "UPDATE mysql.user SET Password=PASSWORD('$MYSQL_ROOT_PASSWORD') WHERE User='root'"
-mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1')"
-mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "DELETE FROM mysql.user WHERE User=''"
-mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "DELETE FROM mysql.db WHERE Db='test' OR Db='test\_%'"
-
-# Set up the database
-mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "CREATE DATABASE IF NOT EXISTS ${SITE_DB}"
-mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "CREATE USER '${SITE_DB_USER_NAME}'@'localhost' IDENTIFIED BY '${SITE_DB_USER_PASSWORD}'"
-mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "GRANT ALL PRIVILEGES ON ${SITE_DB}.* TO '${SITE_DB_USER_NAME}'@'%' IDENTIFIED BY '${SITE_DB_USER_PASSWORD}' WITH GRANT OPTION"
-mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "FLUSH PRIVILEGES"
-
-# Update the bind-address so that we can connect using Heidi
-sudo sed -i "s/bind-address.*/bind-address = $bind_address/" /etc/mysql/my.cnf
-
-# Restart
-sudo service mysql restart
-
-
-# Git
-# -------------------------------------------------------------------
-apt-get install -y git-core
 
 
 # Install Composer
@@ -160,6 +109,33 @@ export PATH=$PATH:/usr/local/bin
 
 # Tell composer about our GitHub oauth token
 composer config -g github-oauth.github.com ${GITHUB_OAUTH_TOKEN}
+
+# Set PHP timezone
+sudo sed -i "s/\;date\.timezone =/date\.timezone = \"America\/Los_Angeles\"/" /etc/php5/apache2/php.ini
+
+echo ">>> Securing MySQL"
+
+# Take the same steps that mysql_secure_installation would normally do
+sudo service mysql restart
+# sudo mysqladmin -u root password "$MYSQL_ROOT_PASSWORD"
+mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "UPDATE mysql.user SET Password=PASSWORD('$MYSQL_ROOT_PASSWORD') WHERE User='root'"
+mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1')"
+mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "DELETE FROM mysql.user WHERE User=''"
+mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "DELETE FROM mysql.db WHERE Db='test' OR Db='test\_%'"
+
+echo ">>> Creating database"
+
+# Set up the database
+mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "CREATE DATABASE IF NOT EXISTS ${SITE_DB}"
+mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "CREATE USER '${SITE_DB_USER_NAME}'@'localhost' IDENTIFIED BY '${SITE_DB_USER_PASSWORD}'"
+mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "GRANT ALL PRIVILEGES ON ${SITE_DB}.* TO '${SITE_DB_USER_NAME}'@'%' IDENTIFIED BY '${SITE_DB_USER_PASSWORD}' WITH GRANT OPTION"
+mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "FLUSH PRIVILEGES"
+
+# Update the bind-address so that we can connect using Heidi
+sudo sed -i "s/bind-address.*/bind-address = $bind_address/" /etc/mysql/my.cnf
+
+# Restart MySQL
+sudo service mysql restart
 
 
 # Install October
@@ -179,18 +155,6 @@ sed "s/'database'  => 'database'/'database'  => '${SITE_DB}'/g
      s/'password'  => ''/'password'  => '${SITE_DB_USER_PASSWORD}'/g"  /var/www/${SITE}/public/config/database.php.orig > /var/www/${SITE}/public/config/database.php
 
 php /var/www/${SITE}/public/artisan october:up
-
-
-# Last minute updates 
-# Why do these need to be down here?  I'm not sure, but they do.
-# -------------------------------------------------------------------
-
-# Remove default apache config files
-sudo rm -fv /etc/apache2/sites-enabled/000-default.conf
-sudo rm -fv /etc/apache2/sites-available/000-default.conf
-
-# Restart apache
-sudo service apache2 restart
 
 # Set the storage folder's permissions
 chmod -R ugo+wrx /var/www/${SITE}/public/storage
@@ -292,7 +256,13 @@ echo "SITE_DB_USER_NAME: ${SITE_DB_USER_NAME}           "
 echo "SITE_DB_USER_PASSWORD: ${SITE_DB_USER_PASSWORD}   "
 echo "=================================================="
 echo ""
-echo "To create a repository, use: "
-echo "curl --user ${BITBUCKET_LOGIN}:${BITBUCKET_PASSWORD} https://api.bitbucket.org/1.0/repositories/ --data name=${SITE}"
 echo ""
 echo "Run grunt to monitor and compile less files."
+echo ""
+echo "To create a repository, use: "
+echo "curl --user ${BITBUCKET_LOGIN}:${BITBUCKET_PASSWORD} https://api.bitbucket.org/1.0/repositories/ --data name=${SITE}"
+
+
+
+
+

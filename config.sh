@@ -5,12 +5,12 @@
 # is by logging into GitHub, then navigating to 
 # https://github.com/settings/tokens
 
-GITHUB_TOKEN=(your token here)
+GITHUB_TOKEN=
 
 BIND_ADDRESS=192.168.50.7
 
 #
-# These aren't used yet, but are printed out one the site has been created
+# These aren't used yet, but are printed out once the site has been created
 #
 
 BITBUCKET_LOGIN=
