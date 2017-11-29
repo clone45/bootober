@@ -2,7 +2,7 @@
 Scripts for setting up a OctoberCMS development environment in Windows using Vagrant.
 I created this for my own use.
 
-1. Install Vagrant
+1. Install Vagrant test
 2. Install Git Bash
 3. Create a folder for your project
 4. Copy these files into your project folder
